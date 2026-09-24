@@ -1,0 +1,40 @@
+name: iac-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'heat/**'
+  workflow_dispatch:
+
+env:
+  OS_AUTH_URL: http://10.0.0.100/identity/v3
+  OS_PROJECT_NAME: ci
+  OS_USERNAME: ci-runner
+  OS_USER_DOMAIN_NAME: Default
+  OS_PROJECT_DOMAIN_NAME: Default
+  OS_IDENTITY_API_VERSION: "3"
+  OS_REGION_NAME: RegionOne
+  OS_PASSWORD: ${{ secrets.OS_PASSWORD }}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, openstack]
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Deploiement (creation ou mise a jour)
+        run: |
+          if openstack stack show infra-prod > /dev/null 2>&1; then
+            openstack stack update -t heat/infra-complete-v2.yaml --wait infra-prod
+          else
+            openstack stack create -t heat/infra-complete-v2.yaml --wait infra-prod
+          fi
+
+      - name: Etat final
+        run: |
+          openstack stack resource list infra-prod
+          openstack stack output show infra-prod instance_ip
