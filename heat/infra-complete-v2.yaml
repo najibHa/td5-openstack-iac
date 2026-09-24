@@ -2,7 +2,7 @@ heat_template_version: 2018-08-31
 
 description: >
   Infrastructure openstack complète TD5 : réseau privé, sous-réseau, routeur,
-  instance et volume attaché. !!Test-Governance!!
+  instance et volume attaché. !!Test-Governance-2!!
 
 parameters:
   image:
