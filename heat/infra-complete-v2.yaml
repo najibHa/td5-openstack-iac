@@ -1,0 +1,96 @@
+heat_template_version: 2018-08-31
+
+description: >
+  Infrastructure openstack complète: réseau privé, sous-réseau, routeur,
+  instance et volume attaché.
+
+parameters:
+  image:
+    type: string
+    default: cirros-0.6.3-x86_64-disk
+  flavor:
+    type: string
+    default: m1.nano
+  external_network:
+    type: string
+    default: public
+
+resources:
+  mon_reseau:
+    type: OS::Neutron::Net
+    properties:
+      name: reseau-heat
+
+  mon_sous_reseau:
+    type: OS::Neutron::Subnet
+    properties:
+      name: subnet-heat
+      network: { get_resource: mon_reseau }
+      cidr: 10.0.2.0/24
+      gateway_ip: 10.0.2.1
+      dns_nameservers: [8.8.8.8]
+
+  mon_routeur:
+    type: OS::Neutron::Router
+    properties:
+      name: routeur-heat
+      external_gateway_info:
+        network: { get_param: external_network }
+
+  interface_routeur:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router: { get_resource: mon_routeur }
+      subnet: { get_resource: mon_sous_reseau }
+
+  sg_ssh:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: sg-ssh-heat
+      rules:
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          direction: ingress
+
+  mon_volume:
+    type: OS::Cinder::Volume
+    properties:
+      name: volume-heat
+      size: 1
+
+  mon_instance:
+    type: OS::Nova::Server
+    properties:
+      name: instance-heat-complete
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - network: { get_resource: mon_reseau }
+      security_groups:
+        - { get_resource: sg_ssh }
+
+  mon_instance_2:
+    type: OS::Nova::Server
+    properties:
+      name: instance-heat-complete-2
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - network: { get_resource: mon_reseau }
+      security_groups:
+        - { get_resource: sg_ssh }
+
+  attachement:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      volume_id: { get_resource: mon_volume }
+      instance_uuid: { get_resource: mon_instance }
+
+outputs:
+  instance_ip:
+    description: IP privée de l'instance
+    value: { get_attr: [mon_instance, first_address] }
+  instance_id:
+    description: ID de l'instance
+    value: { get_resource: mon_instance }
