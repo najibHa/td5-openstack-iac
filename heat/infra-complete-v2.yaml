@@ -1,8 +1,8 @@
 heat_template_version: 2018-08-31
 
 description: >
-  Infrastructure openstack complète TD5 : réseau privé, sous-réseau, routeur,
-  instance et volume attaché. !!Test-Governance-2!!
+  Infrastructure OpenStack avec Load Balancer Octavia
+  Deux VMs Caddy derrière un load balancer ROUND_ROBIN
 
 parameters:
   image:
@@ -52,6 +52,10 @@ resources:
           port_range_min: 22
           port_range_max: 22
           direction: ingress
+        - protocol: tcp
+          port_range_min: 80
+          port_range_max: 80
+          direction: ingress
 
   mon_volume:
     type: OS::Cinder::Volume
@@ -59,38 +63,94 @@ resources:
       name: volume-heat
       size: 1
 
-  mon_instance:
+  vm1:
     type: OS::Nova::Server
     properties:
-      name: instance-heat-complete
+      name: vm1-caddy
       image: { get_param: image }
       flavor: { get_param: flavor }
       networks:
         - network: { get_resource: mon_reseau }
       security_groups:
         - { get_resource: sg_ssh }
+      user_data: |
+        #!/bin/bash
+        apt-get update
+        apt-get install -y caddy
+        IP=$(hostname -I | awk '{print $1}')
+        mkdir -p /var/www/html
+        cat > /var/www/html/index.html <<EOF
+        <html><body><h1>VM1</h1><p>IP: $IP</p>
+        </body></html>
+        EOF
+        systemctl restart caddy
 
-  mon_instance_2:
+  vm2:
     type: OS::Nova::Server
     properties:
-      name: instance-heat-complete-2
+      name: vm2-caddy
       image: { get_param: image }
       flavor: { get_param: flavor }
       networks:
         - network: { get_resource: mon_reseau }
       security_groups:
         - { get_resource: sg_ssh }
+      user_data: |
+        #!/bin/bash
+        apt-get update
+        apt-get install -y caddy
+        IP=$(hostname -I | awk '{print $1}')
+        mkdir -p /var/www/html
+        cat > /var/www/html/index.html <<EOF
+        <html><body><h1>VM2</h1><p>IP: $IP</p>
+        </body></html>
+        EOF
+        systemctl restart caddy
 
-  mon_instance_3:
-    type: OS::Nova::Server
+  mon_load_balancer:
+    type: OS::Octavia::LoadBalancer
     properties:
-      name: instance-heat-complete-3
-      image: { get_param: image }
-      flavor: { get_param: flavor }
-      networks:
-        - network: { get_resource: mon_reseau }
-      security_groups:
-        - { get_resource: sg_ssh }
+      name: lb-octavia
+      vip_subnet: { get_resource: mon_sous_reseau }
+
+  mon_listener:
+    type: OS::Octavia::Listener
+    properties:
+      name: listener-http
+      protocol: HTTP
+      protocol_port: 80
+      loadbalancer: { get_resource: mon_load_balancer }
+
+  mon_pool:
+    type: OS::Octavia::Pool
+    properties:
+      name: pool-vms
+      protocol: HTTP
+      lb_algorithm: ROUND_ROBIN
+      listener: { get_resource: mon_listener }
+
+  vm1_member:
+    type: OS::Octavia::PoolMember
+    properties:
+      pool: { get_resource: mon_pool }
+      address: { get_attr: [vm1, networks,
+        { get_attr: [mon_reseau, name] }, 0] }
+      protocol_port: 80
+
+  vm2_member:
+    type: OS::Octavia::PoolMember
+    properties:
+      pool: { get_resource: mon_pool }
+      address: { get_attr: [vm2, networks,
+        { get_attr: [mon_reseau, name] }, 0] }
+      protocol_port: 80
+
+  lb_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: external_network }
+      port_id: { get_attr: [mon_load_balancer,
+        vip_port_id] }
 
   attachement:
     type: OS::Cinder::VolumeAttachment
@@ -105,3 +165,15 @@ outputs:
   instance_id:
     description: ID de l'instance
     value: { get_resource: mon_instance }
+  lb_floating_ip:
+    description: IP flottante du load balancer
+    value: { get_attr: [lb_floating_ip,
+      floating_ip_address] }
+  vm1_ip:
+    description: IP privée de VM1
+    value: { get_attr: [vm1, networks,
+      { get_attr: [mon_reseau, name] }, 0] }
+  vm2_ip:
+    description: IP privée de VM2
+    value: { get_attr: [vm2, networks,
+      { get_attr: [mon_reseau, name] }, 0] }
