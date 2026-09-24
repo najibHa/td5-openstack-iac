@@ -20,6 +20,7 @@ env:
 jobs:
   deploy:
     runs-on: [self-hosted, openstack]
+    environment: production
     concurrency:
       group: deploy-prod
       cancel-in-progress: false
