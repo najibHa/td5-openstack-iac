@@ -81,6 +81,17 @@ resources:
       security_groups:
         - { get_resource: sg_ssh }
 
+  mon_instance_3:
+    type: OS::Nova::Server
+    properties:
+      name: instance-heat-complete-3
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      networks:
+        - network: { get_resource: mon_reseau }
+      security_groups:
+        - { get_resource: sg_ssh }
+
   attachement:
     type: OS::Cinder::VolumeAttachment
     properties:
