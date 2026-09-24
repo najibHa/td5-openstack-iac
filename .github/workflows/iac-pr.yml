@@ -1,0 +1,66 @@
+name: iac-pr
+
+on:
+  pull_request:
+    paths:
+      - 'heat/**'
+  workflow_dispatch:
+
+env:
+  OS_AUTH_URL: http://10.0.0.100/identity/v3
+  OS_PROJECT_NAME: ci
+  OS_USERNAME: ci-runner
+  OS_USER_DOMAIN_NAME: Default
+  OS_PROJECT_DOMAIN_NAME: Default
+  OS_IDENTITY_API_VERSION: "3"
+  OS_REGION_NAME: RegionOne
+  OS_PASSWORD: ${{ secrets.OS_PASSWORD }}
+
+jobs:
+  test:
+    runs-on: [self-hosted, openstack]
+    concurrency:
+      group: pr-${{ github.event.number || 'manuel' }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Lint YAML
+        run: yamllint -d relaxed heat/
+
+      - name: Authentification OpenStack
+        run: openstack token issue -c expires
+
+      - name: Validation du template Heat
+        run: openstack orchestration template validate -t heat/infra-complete-v2.yaml
+
+      - name: Apercu (dry-run)
+        run: |
+          openstack stack create --dry-run \
+            -t heat/infra-complete-v2.yaml \
+            pr-${{ github.event.number || 'manuel' }}
+
+      - name: Creation reelle de la stack jetable
+        run: |
+          STACK=pr-${{ github.event.number || 'manuel' }}
+          # repart d'un etat propre (erreur ignoree si la stack n'existe pas)
+          openstack stack delete $STACK --yes --wait || true
+          openstack stack create -t heat/infra-complete-v2.yaml --wait "$STACK"
+
+      - name: Smoke test
+        run: |
+          STACK=pr-${{ github.event.number || 'manuel' }}
+          IP=$(openstack stack output show $STACK instance_ip -f value -c output_value)
+          echo "IP privee de l'instance : $IP"
+          test -n "$IP"
+          ID=$(openstack stack output show $STACK instance_id -f value -c output_value)
+          STATUS=$(openstack server show "$ID" -f value -c status)
+          echo "Etat de l'instance $ID : $STATUS"
+          test "$STATUS" = "ACTIVE"
+          openstack stack resource list $STACK
+
+      - name: Nettoyage
+        if: always()
+        run: |
+          STACK=pr-${{ github.event.number || 'manuel' }}
+          openstack stack delete $STACK --yes --wait || true
