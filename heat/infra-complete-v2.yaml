@@ -1,16 +1,18 @@
 heat_template_version: 2018-08-31
 
 description: >
-  Infrastructure openstack complète TD5 : réseau privé, sous-réseau, routeur,
-  instance et volume attaché. !!Test-Governance-2!!
+  Infrastructure openstack complète: réseau privé, sous-réseau, routeur,
+  instance et volume attaché (TD5 - validation production).
 
 parameters:
   image:
     type: string
     default: cirros-0.6.3-x86_64-disk
+
   flavor:
     type: string
     default: m1.nano
+
   external_network:
     type: string
     default: public
@@ -102,6 +104,7 @@ outputs:
   instance_ip:
     description: IP privée de l'instance
     value: { get_attr: [mon_instance, first_address] }
+
   instance_id:
     description: ID de l'instance
     value: { get_resource: mon_instance }
